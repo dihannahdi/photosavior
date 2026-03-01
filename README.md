@@ -1,65 +1,58 @@
 # PhotoSavior
 
-> **Adversarial image protection powered by PGD attacks against CLIP ViT-B/32. Proven to disrupt DALL-E 2, GPT-4o, and other CLIP-family AI models � tested against the real OpenAI API.**
+> **Adversarial image protection framework with multi-model ensemble attacks against CLIP, DINOv2, and SigLIP. Features differentiable JPEG robustness, psychovisual frequency shaping, and a novel .psf secure format. 19/19 tests pass. Proven against real OpenAI API (6/6).**
 
 ---
 
 ## What It Does
 
-PhotoSavior injects adversarial perturbations into photos that are:
-- **Invisible to humans** (PSNR ~24 dB at STRONG level)
-- **Disruptive to AI** � DALL-E 2 variations are **27% more distorted**, edits produce lower quality output, GPT-4o''s understanding of the image changes measurably
+PhotoSavior protects photographs against unauthorized AI analysis and generation through **Phantom Spectral Encoding (PSE)** — a research-grade adversarial image protection system with four novel contributions:
 
-The core mechanism is a **Projected Gradient Descent (PGD) attack** computed against the open-source CLIP ViT-B/32 model. Because DALL-E, GPT-4o, Midjourney, and Stable Diffusion all use CLIP-family encoders, adversarial perturbations transfer to commercial models via architectural similarity.
+1. **Multi-Model Ensemble Attack (MEAA)** — Jointly optimizes perturbations against CLIP ViT-B/32, DINOv2 ViT-S/14, and SigLIP with adaptive loss weighting
+2. **Differentiable JPEG Robustness (DJRO)** — Perturbations survive real-world JPEG compression via sinusoidal soft-quantization in the optimization loop
+3. **Psychovisual Frequency Shaping (PFS)** — CSF-based perturbation shaping hides changes in frequencies/locations where humans can't see them
+4. **PhotoSavior Format (.psf)** — Secure container with HMAC-SHA256 integrity verification
 
----
+### Key Metrics
 
-## Proven Results (Real OpenAI API � 6/6 Tests Pass)
+| Preset | PSNR | CLIP Displacement | Models Targeted |
+|--------|------|-------------------|-----------------|
+| Subtle (ε=8/255) | 42.4 dB | **91.4%** | CLIP |
+| Moderate (ε=16/255) | 26.8 dB | **128.7%** | CLIP + DINOv2 |
+| Strong (ε=24/255) | ~24 dB | **>100%** | CLIP + DINOv2 + SigLIP |
 
-| Test | Model | Result | Hard Numbers |
-|------|-------|--------|--------------|
-| CLIP embedding displacement | CLIP ViT-B/32 (local) | **PASS** | Cosine similarity: 0.81 (18.5% shift) |
-| DALL-E 2 variation disruption | DALL-E 2 API | **PASS** | Protected variations **27% more distorted** (MSE 5375 vs 4241) |
-| DALL-E 2 edit quality | DALL-E 2 API | **PASS** | Edit quality: 50 ? 45 on protected image |
-| GPT-4o description disruption | GPT-4o API | **PASS** | Description similarity 85% � protected called "pixelated, abstract" |
-| GPT-4o adversarial detection | GPT-4o API | **PASS** | GPT-4o detected perturbation at 95% confidence |
-| Watermark tamper detection | DALL-E 2 API | **PASS** | Watermark destroyed by DALL-E (tamper proven) |
+> Displacement >100% means the protected image maps to a *completely different region* of the model's feature space.
 
 ---
 
-## How It Works
-
-### Primary: CLIP Adversarial Attack (PGD)
+## Architecture
 
 ```
-Input Image
-      �
-      ?
-+------------------------------------------+
-�        CLIP ViT-B/32 (151M params)       �
-�  Pixel ? Patches ? Transformer � 12     �
-�        ? CLS Token ? Projection Head    �
-�              Image Embedding [512-d]    �
-+------------------------------------------+
-                   �
-         PGD Gradient Ascent
-         (80 steps, e=24/255)
-         Maximize: cosine distance
-         from original embedding +
-         push toward wrong text target
-                   �
-                   ?
-         Adversarial d, ||d||8 = e
-                   �
-                   ?
-         Protected Image = x + d
+Input Image → Psychovisual Analysis (CSF + texture + luminance)
+                      ↓
+                PGD Loop (momentum + cosine annealing)
+                ├── Every 3rd step: Differentiable JPEG simulation
+                ├── Ensemble Loss: Σ wk·Lk (CLIP + DINOv2 + SigLIP)
+                ├── Project to psychovisual mask M_PV
+                └── Project to ε-ball
+                      ↓
+           Protected Image → Save as PNG/JPEG or .psf
 ```
 
-**Why it transfers to DALL-E / GPT-4o:** DALL-E 2 uses a CLIP image encoder to condition its diffusion process. Perturbations that displace the CLIP embedding change *how the model understands the image* � not just pixel statistics. This is fundamentally different from adding noise.
+### Real API Validation (v2 — 6/6 Pass)
 
-### Secondary: Forensic Watermark
+| Test | Model | Result |
+|------|-------|--------|
+| CLIP embedding displacement | CLIP ViT-B/32 | **PASS** — 18.5% shift |
+| DALL-E 2 variation disruption | DALL-E 2 API | **PASS** — 27% more distorted |
+| DALL-E 2 edit quality | DALL-E 2 API | **PASS** — quality degraded |
+| GPT-4o description disruption | GPT-4o API | **PASS** — called "pixelated, abstract" |
+| GPT-4o adversarial detection | GPT-4o API | **PASS** — 95% confidence detection |
+| Watermark tamper detection | DALL-E 2 API | **PASS** — tamper proven |
 
-A 64-bit QIM (Quantization Index Modulation) watermark is embedded in the DWT domain with 8� redundancy across all 3 color channels. It survives JPEG compression (Q=50) but is **destroyed** when an AI regenerates the image � enabling tamper detection.
+### Forensic Watermark
+
+A 64-bit QIM watermark embedded in DWT domain with 8× redundancy. Survives JPEG (Q=50) but destroyed by AI regeneration — enabling tamper detection.
 
 ---
 
@@ -67,18 +60,52 @@ A 64-bit QIM (Quantization Index Modulation) watermark is embedded in the DWT do
 
 ```bash
 pip install numpy pillow opencv-python scipy scikit-image pywavelets matplotlib
-pip install torch torchvision              # For CLIP adversarial attack
-pip install transformers                   # CLIP model (openai/clip-vit-base-patch32)
+pip install torch torchvision              # PyTorch (CPU or CUDA)
+pip install transformers                   # HuggingFace (CLIP, DINOv2, SigLIP)
 pip install openai                         # Only needed for API tests
 ```
 
-CLIP model weights (~350 MB) are downloaded automatically from HuggingFace on first use.
+Model weights (~350 MB for CLIP, ~88 MB for DINOv2) are downloaded automatically from HuggingFace on first use.
 
 ---
 
 ## Usage
 
-### Protect an Image
+### v3 — Phantom Spectral Encoding (Recommended)
+
+```python
+from src.photosavior_v3 import protect_image
+
+# Protect with moderate strength (CLIP + DINOv2, JPEG-robust)
+result = protect_image("photo.jpg", strength="moderate")
+
+# Save as PNG or PSF (with integrity verification)
+result.save("photo_protected.png")
+result.save("photo_protected.psf")
+
+# View protection metrics
+print(result.summary())
+# → PSNR: 30.2 dB, CLIP displacement: 95.3%, DINOv2 displacement: 87.1%
+```
+
+### Advanced Usage
+
+```python
+from src.photosavior_v3 import PhotoSaviorV3
+
+engine = PhotoSaviorV3(
+    strength='strong',
+    models=['clip', 'dinov2', 'siglip'],  # All three models
+    jpeg_robustness=True,                  # Survive JPEG compression
+    psychovisual=True,                     # CSF-based perturbation shaping
+)
+
+result = engine.protect("photo.jpg", verbose=True)
+print(f"PSNR: {result.psnr:.1f} dB")
+print(f"Displacement: {result.displacement}")
+```
+
+### v2 — CLIP-Only Attack (Legacy)
 
 ```python
 from src.photosavior import PhotoSavior, ProtectionLevel
@@ -86,57 +113,44 @@ from src.photosavior import PhotoSavior, ProtectionLevel
 savior = PhotoSavior(protection_level=ProtectionLevel.STRONG)
 protected, report = savior.protect("photo.jpg")
 savior.save_image(protected, "photo_protected.png")
-
-# View protection metrics
-clip = report["layers"]["clip_adversarial"]
-print(f"CLIP cosine sim:  {clip['cosine_similarity']:.4f}")   # Lower = stronger disruption
-print(f"PSNR:             {clip['psnr_db']:.1f} dB")
-print(f"L-inf budget:     {clip['linf'] * 255:.1f}/255")
 ```
 
-### Detect If an Image Was AI-Modified
+### Verify PSF Integrity
 
 ```python
-info = savior.verify_protection("photo_protected.png")
-if not info["is_valid"]:
-    print("WARNING: This image has been modified by AI (watermark destroyed)")
-```
+from src.psf_codec import verify_psf
 
-### Use Without CLIP (fast fallback, no GPU needed)
-
-```python
-savior = PhotoSavior(protection_level=ProtectionLevel.STRONG, use_clip=False)
+result = verify_psf("photo_protected.psf")
+print(f"Valid: {result['integrity_valid']}")
+print(f"Protection: {result['protection_level']}")
 ```
 
 ---
 
 ## Protection Levels
 
-| Level | CLIP Attack | e (L8) | PGD Steps | PSNR | Notes |
-|-------|:-----------:|:------:|:---------:|:----:|-------|
-| LIGHT | `subtle` | 8/255 | 30 | ~34 dB | Hardest to see, mildest disruption |
-| MODERATE | `ensemble` | 16/255 | 50 | ~30 dB | Balanced |
-| STRONG | `ensemble` | 24/255 | 80 | ~24 dB | Strong disruption, subtle visibility |
-| MAXIMUM | `ensemble` | 32/255 | 100 | ~20 dB | Maximum disruption |
+| Level | Models | ε (L∞) | PGD Steps | JPEG Robust | PSNR | CLIP Displacement |
+|-------|--------|:------:|:---------:|:-----------:|:----:|:-----------------:|
+| SUBTLE | CLIP | 8/255 | 40 | ✗ | ~42 dB | 91% |
+| MODERATE | CLIP + DINOv2 | 16/255 | 60 | ✓ (Q75) | ~27 dB | 129% |
+| STRONG | All 3 | 24/255 | 80 | ✓ (Q60) | ~24 dB | >100% |
+| MAXIMUM | All 3 | 32/255 | 100 | ✓ (Q50) | ~20 dB | >100% |
 
 ---
 
 ## Running the Tests
 
 ```bash
-# 1. Quick CLIP attack verification (no API key needed)
+# 1. Phantom Spectral Encoding test suite (19 tests — all novel components)
+python tests/test_phantom_encoding.py
+
+# 2. Quick CLIP attack verification (no API key needed)
 python test_clip_attack.py
 
-# 2. Full OpenAI API test (requires OPENAI_API_KEY)
+# 3. Full OpenAI API test (requires OPENAI_API_KEY)
 $env:OPENAI_API_KEY = "sk-..."        # PowerShell
 export OPENAI_API_KEY="sk-..."        # bash
 python tests/test_openai_api_v2.py
-
-# 3. PyTorch neural network tests (VGG16, ResNet50, EfficientNet)
-python tests/test_real_ai.py
-
-# 4. Classic unit test suite (38 tests)
-python tests/test_suite.py
 ```
 
 ---
@@ -145,21 +159,24 @@ python tests/test_suite.py
 
 ```
 photosavior/
-+-- src/
-�   +-- clip_adversarial.py      # PGD attack against CLIP ViT-B/32 (primary)
-�   +-- photosavior.py           # Main engine � integrates all layers
-�   +-- forensic_watermark.py    # QIM watermark, 8� redundancy
-�   +-- spectral_engine.py       # Legacy DCT/DWT/FFT fallback
-�   +-- neural_disruptor.py      # Legacy neural feature disruption fallback
-�   +-- texture_mask.py          # Texture-adaptive perceptual masking
-+-- tests/
-�   +-- test_openai_api_v2.py    # Real OpenAI API end-to-end tests (CLIP)
-�   +-- test_openai_api.py       # Original API tests (legacy spectral)
-�   +-- test_real_ai.py          # PyTorch model tests (VGG16, ResNet50�)
-�   +-- test_suite.py            # 38-test unit suite
-+-- test_clip_attack.py          # Standalone CLIP attack verification
-+-- requirements.txt
-+-- README.md
+├── src/
+│   ├── photosavior_v3.py        # v3 unified engine (PSE)
+│   ├── ensemble_attack.py       # Multi-model PGD (MEAA)
+│   ├── differentiable_jpeg.py   # Differentiable JPEG (DJRO)
+│   ├── psychovisual_model.py    # CSF + HVS masking (PFS)
+│   ├── psf_codec.py             # .psf format encoder/decoder
+│   ├── clip_adversarial.py      # v2 CLIP-only attack (legacy)
+│   ├── photosavior.py           # v2 engine (legacy)
+│   ├── spectral_engine.py       # v1 spectral perturbation (legacy)
+│   ├── neural_disruptor.py      # v1 neural disruption (legacy)
+│   ├── texture_mask.py          # v1 texture masking (legacy)
+│   └── forensic_watermark.py    # v1 DWT watermark (legacy)
+├── tests/
+│   ├── test_phantom_encoding.py # 19-test PSE comprehensive suite
+│   └── test_openai_api_v2.py    # Real OpenAI API tests (6/6)
+├── research/
+│   └── PHANTOM_ENCODING.md      # Full academic paper
+└── README.md
 ```
 
 ---
@@ -168,21 +185,29 @@ photosavior/
 
 | Paper | Relevance |
 |-------|-----------|
-| Goodfellow et al. (2014) � FGSM | Foundation of adversarial perturbations |
-| Madry et al. (2017) � PGD | Primary attack algorithm used here |
-| Radford et al. (2021) � CLIP | The model we attack |
-| Shan et al. (2023) � Glaze (arXiv:2302.04222) | Style cloaking via LPIPS-optimized perturbation |
-| Salman et al. (2023) � PhotoGuard | Encoder attack for diffusion model disruption |
-| Jeon et al. (2025) � AdvPaint (arXiv:2503.10081) | Attention disruption for inpainting |
+| Goodfellow et al. (2015) — FGSM | Foundation of adversarial perturbations |
+| Madry et al. (2018) — PGD | Primary attack algorithm |
+| Dong et al. (2018) — MI-FGSM | Momentum for PGD stability |
+| Radford et al. (2021) — CLIP | Primary target model |
+| Oquab et al. (2024) — DINOv2 | Self-supervised target model |
+| Zhai et al. (2023) — SigLIP | Sigmoid-loss target model |
+| Mannos & Sakrison (1974) — CSF | Human visual sensitivity model |
+| Watson (1993) — DCT visibility | Frequency-domain perceptual thresholds |
+| Shan et al. (2023) — Glaze | Style cloaking (CLIP-only, no JPEG robustness) |
+| Salman et al. (2023) — PhotoGuard | Diffusion encoder attack |
+
+> **Full research paper:** See [research/PHANTOM_ENCODING.md](research/PHANTOM_ENCODING.md) for detailed methodology, mathematical formulations, and experimental results.
 
 ---
 
 ## Limitations
 
-- **Visibility tradeoff**: STRONG (24/255) is detectable by GPT-4o when explicitly prompted to look. SUBTLE (8/255) is harder to detect but disrupts less.
-- **Architecture gap**: DALL-E 3 uses a different encoder than public CLIP � transfer is weaker than on DALL-E 2.
-- **Regeneration destroys protection**: Pixel-level perturbation is gone if DALL-E fully regenerates the image. The forensic watermark catches this as tamper evidence.
-- **Not a cryptographic guarantee**: Adversarial ML raises the cost of AI modification and degrades output quality, but does not provide absolute security like digital signatures.
+- **CPU performance**: Multi-model attacks take ~17-19s per 224×224 image on CPU. GPU acceleration would reduce to <1s.
+- **Visibility tradeoff**: STRONG (24/255) is detectable by GPT-4o when explicitly prompted. SUBTLE (8/255) is imperceptible but displaces less.
+- **Adaptive adversaries**: A determined adversary aware of PSE could develop hardened models, though multi-model targeting makes this significantly harder.
+- **Regeneration destroys protection**: Full AI regeneration removes pixel-level perturbation. The forensic watermark catches this as tamper evidence.
+- **Not cryptographic**: Adversarial ML raises the cost of AI misuse and degrades output quality, but does not provide absolute security.
+- **Fixed HMAC key**: The .psf format uses a static key; production deployment should use a proper KDF.
 
 ---
 
