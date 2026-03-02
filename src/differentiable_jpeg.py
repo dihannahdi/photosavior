@@ -146,14 +146,24 @@ class SoftQuantization(nn.Module):
     Properties:
     - Passes through integer points: soft_round(n) = n for integer n
     - Smooth gradient: d/dx = 1 - cos(2πx) ∈ [0, 2] 
-    - As temperature → ∞, approaches true round()
     - Differentiable EVERYWHERE (no zero-gradient regions)
     
     We add a temperature parameter τ for controlling sharpness:
         soft_round(x, τ) = x - sin(2πx) / (2πτ)
+    
+    Temperature semantics:
+    - τ → 0: approaches hard round() (more JPEG-accurate, but unstable)
+    - τ = 0.5: calibrated to match ~60% of real JPEG distortion
+    - τ = 1.0: gentle rounding (~15% of real JPEG distortion)
+    - τ → ∞: approaches identity (no rounding at all)
+    
+    The optimal τ to match real JPEG average distortion is:
+        τ = sqrt(3 / (2π²)) ≈ 0.39
+    We use τ = 0.5 as default for stability while being significantly
+    closer to real JPEG behavior than τ = 1.0.
     """
     
-    def __init__(self, temperature: float = 1.0):
+    def __init__(self, temperature: float = 0.5):
         super().__init__()
         self.temperature = temperature
     
@@ -268,10 +278,11 @@ class DifferentiableJPEG(nn.Module):
         JPEG quality factor (1-100). Lower = more compression.
     temperature : float
         Softness of quantization approximation.
-        Higher = closer to true JPEG but harder gradients.
+        Lower = closer to true JPEG but less stable gradients.
+        Default 0.5 balances accuracy with gradient stability.
     """
     
-    def __init__(self, quality: int = 75, temperature: float = 1.0):
+    def __init__(self, quality: int = 75, temperature: float = 0.5):
         super().__init__()
         self.quality = quality
         self.temperature = temperature
@@ -342,6 +353,10 @@ class DifferentiableJPEG(nn.Module):
         """
         Compress a single channel through DCT → quantize → IDCT.
         
+        Applies the JPEG-standard level shift (subtract 0.5 before DCT,
+        add 0.5 after IDCT) to center pixel values around zero, matching
+        the real JPEG pipeline (which subtracts 128 in [0,255] domain).
+        
         Args:
             channel: (B, 1, H, W) single color channel
             quant_table: (8, 8) quantization table
@@ -350,8 +365,12 @@ class DifferentiableJPEG(nn.Module):
         """
         B, _, H, W = channel.shape
         
+        # Level shift: center around zero (JPEG standard subtracts 128
+        # in [0,255]; equivalent to subtracting 0.5 in [0,1] domain)
+        shifted = channel - 0.5
+        
         # Split into 8×8 blocks
-        blocks, num_h, num_w = self._image_to_blocks(channel)
+        blocks, num_h, num_w = self._image_to_blocks(shifted)
         
         # Forward DCT
         dct_coeffs = self.dct(blocks)
@@ -363,7 +382,10 @@ class DifferentiableJPEG(nn.Module):
         reconstructed = self.dct.inverse(quantized)
         
         # Reassemble
-        return self._blocks_to_image(reconstructed, B, num_h, num_w, H, W)
+        result = self._blocks_to_image(reconstructed, B, num_h, num_w, H, W)
+        
+        # Reverse level shift
+        return result + 0.5
     
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """

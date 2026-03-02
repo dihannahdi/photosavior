@@ -321,17 +321,19 @@ class EnsembleAdversarialAttack:
             # Extract features
             features = _extract_features(model, preprocessed, model_key)
             
-            # Normalize features
+            # Compute distance metrics
+            # F.cosine_similarity already normalizes internally,
+            # so explicit F.normalize is unnecessary
+            cosine_sim = F.cosine_similarity(
+                features, original_features[model_key].detach()
+            )
+            model_loss = -cosine_sim.mean()  # Negative because we maximize
+            
+            # Also add L2 distance on normalized features for stronger displacement
             features_norm = F.normalize(features, p=2, dim=-1)
             orig_norm = F.normalize(
                 original_features[model_key].detach(), p=2, dim=-1
             )
-            
-            # Loss = negative cosine similarity (we MAXIMIZE distance)
-            cosine_sim = F.cosine_similarity(features_norm, orig_norm)
-            model_loss = -cosine_sim.mean()  # Negative because we maximize
-            
-            # Also add L2 distance for stronger displacement
             l2_dist = torch.norm(features_norm - orig_norm, p=2, dim=-1).mean()
             
             # Combined loss for this model
@@ -552,12 +554,15 @@ class EnsembleAdversarialAttack:
                 )
                 features = _extract_features(model, preprocessed, model_key)
                 
+                # F.cosine_similarity normalizes internally — no need for
+                # explicit F.normalize before it
+                cosine_sim = F.cosine_similarity(
+                    features, original_features[model_key]
+                ).item()
                 feat_norm = F.normalize(features, p=2, dim=-1)
                 orig_norm = F.normalize(
                     original_features[model_key], p=2, dim=-1
                 )
-                
-                cosine_sim = F.cosine_similarity(feat_norm, orig_norm).item()
                 l2_dist = torch.norm(feat_norm - orig_norm, p=2).item()
                 
                 final_metrics[model_key] = {
