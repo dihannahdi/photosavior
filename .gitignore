@@ -41,3 +41,4 @@ Thumbs.db
 *.jpeg
 !samples/*.png
 !samples/*.jpg
+!results/*.png

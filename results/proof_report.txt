@@ -1,0 +1,64 @@
+======================================================================
+  PHANTOM SPECTRAL ENCODING - Visual Proof Report
+======================================================================
+  Generated: 2026-03-02 12:07:08
+
+PROOF 1: Multi-Model Attack Effectiveness
+--------------------------------------------------
+Config                   CLIP   DINOv2   SigLIP     PSNR
+--------------------------------------------------
+CLIP Only             143.5%    0.0%    0.0%   27.0dB
+CLIP + DINOv2         136.0%  158.6%    0.0%   27.0dB
+All 3 Models          119.9%  151.9%  138.1%   26.9dB
+
+Cross-Model Transfer (CLIP-only attack measured on other models):
+  DINOv2 transfer: 42.3%
+  SigLIP transfer: 12.7%
+
+PROOF 2: JPEG Survival (DJRO)
+------------------------------------------------------------
+Quality         Naive   Naive%         DJRO    DJRO%
+------------------------------------------------------------
+Pre-JPEG      147.3%     100%      133.4%     100%
+Q95           107.9%      73%       97.6%      73%
+Q85            73.6%      50%       80.7%      60%
+Q75            71.5%      49%       70.9%      53%
+Q60            61.4%      42%       63.8%      48%
+Q50            51.5%      35%       55.9%      42%
+
+PROOF 3: Psychovisual Frequency Shaping (PFS)
+--------------------------------------------------
+Metric                   Without PFS        With PFS      Delta
+--------------------------------------------------
+PSNR (dB)                      27.0           38.3     +11.3
+SSIM                         0.5193         0.9651   +0.4458
+Displacement                 148.4%          98.8%   -49.6%
+
+PFS BENEFIT: +11.3 dB PSNR, +0.4458 SSIM
+  while maintaining 98.8% displacement (vs 148.4%)
+
+PROOF 4: PSF Format Integrity
+--------------------------------------------------
+File size: 135,273 bytes
+Compression ratio: 1.1x
+Pixel data: 150,528 -> 133,280 bytes
+Integrity check: PASSED
+Protection level: moderate
+Lossless round-trip: True
+
+PROOF 5: Full Pipeline (All Features)
+--------------------------------------------------
+Strength: moderate
+Models: CLIP + DINOv2
+JPEG Robustness: ON
+Psychovisual Shaping: ON
+PSNR: 38.6 dB
+clip displacement: 132.3%
+dinov2 displacement: 149.8%
+clip after Q75 JPEG: 26.0%
+dinov2 after Q75 JPEG: 81.0%
+Processing time: 66.6s
+
+======================================================================
+  ALL PROOFS GENERATED SUCCESSFULLY
+======================================================================
